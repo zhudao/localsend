@@ -7,14 +7,14 @@ on:
     branches: [main]
 
 env:
-  FLUTTER_VERSION: "3.24.5"
+  FLUTTER_VERSION: "3.35.6"
 
 jobs:
   format:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
@@ -28,20 +28,20 @@ jobs:
         run: rm -rf lib/gen
       - name: Check format (app)
         working-directory: app
-        run: dart format --line-length 150 --set-exit-if-changed lib test
+        run: dart format --set-exit-if-changed lib test
 
       - name: Dependencies (common)
         working-directory: common
         run: dart pub get
       - name: Check format (common)
         working-directory: common
-        run: dart format --line-length 150 --set-exit-if-changed lib test
+        run: dart format --set-exit-if-changed lib test
 
   test:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
@@ -71,7 +71,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Extract version from pubspec.yaml
         id: pubspec_version
         run: |
