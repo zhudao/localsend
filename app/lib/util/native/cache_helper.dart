@@ -1,13 +1,11 @@
-// ignore_for_file: discarded_futures, unawaited_futures
-
 import 'dart:io';
 import 'dart:isolate';
 
-import 'package:common/util/logger.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
-import 'package:localsend_app/util/file_path_helper.dart';
 import 'package:localsend_app/util/native/platform_check.dart';
+import 'package:localsend_isolates/util/file_path_helper.dart';
+import 'package:localsend_isolates/util/logger.dart';
 import 'package:logging/logging.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path_provider_foundation/path_provider_foundation.dart';
@@ -32,19 +30,9 @@ Future<void> _clear(RootIsolateToken token) async {
   BackgroundIsolateBinaryMessenger.ensureInitialized(token);
 
   final futures = (
-    FilePicker.platform.clearTemporaryFiles(),
+    FilePicker.clearTemporaryFiles(),
     PhotoManager.clearFileCache(),
-    checkPlatform([TargetPlatform.iOS, TargetPlatform.android])
-        ? getTemporaryDirectory().then((cacheDir) {
-            cacheDir.list().listen((event) {
-              if (event is File) {
-                event.delete().then((_) {}).catchError((error) {
-                  _logger.warning('Failed to delete file: $error');
-                });
-              }
-            });
-          })
-        : Future.value(),
+    checkPlatform([TargetPlatform.iOS, TargetPlatform.android]) ? getTemporaryDirectory().then(clearTemporaryCacheFiles) : Future.value(),
     checkPlatform([TargetPlatform.iOS])
         ? PathProviderFoundation()
               .getContainerPath(
@@ -73,5 +61,17 @@ Future<void> _clear(RootIsolateToken token) async {
     await futures;
   } catch (e) {
     _logger.warning('Failed to clear cache: $e');
+  }
+}
+
+Future<void> clearTemporaryCacheFiles(Directory cacheDir) async {
+  await for (final event in cacheDir.list()) {
+    if (event is File) {
+      try {
+        await event.delete();
+      } catch (error) {
+        _logger.warning('Failed to delete cache file: $error');
+      }
+    }
   }
 }

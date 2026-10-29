@@ -1,13 +1,16 @@
-import 'package:common/isolate.dart';
-import 'package:common/model/device.dart';
 import 'package:flutter/material.dart';
 import 'package:localsend_app/config/theme.dart';
 import 'package:localsend_app/gen/strings.g.dart';
 import 'package:localsend_app/model/persistence/favorite_device.dart';
+import 'package:localsend_app/provider/device_info_provider.dart';
 import 'package:localsend_app/provider/favorites_provider.dart';
+import 'package:localsend_app/provider/http_provider.dart';
 import 'package:localsend_app/provider/settings_provider.dart';
 import 'package:localsend_app/widget/dialogs/error_dialog.dart';
 import 'package:localsend_app/widget/dialogs/favorite_delete_dialog.dart';
+import 'package:localsend_isolates/model/device.dart';
+import 'package:localsend_isolates/rust/api/model.dart';
+import 'package:localsend_isolates/util/rust.dart';
 import 'package:refena_flutter/refena_flutter.dart';
 import 'package:routerino/routerino.dart';
 
@@ -31,6 +34,7 @@ class _FavoriteEditDialogState extends State<FavoriteEditDialog> with Refena {
   final _aliasController = TextEditingController();
   bool _fetching = false;
   String? _error;
+  String? _portError;
 
   @override
   void initState() {
@@ -85,6 +89,7 @@ class _FavoriteEditDialogState extends State<FavoriteEditDialog> with Refena {
             const SizedBox(height: 5),
             TextFormField(
               controller: _portController,
+              decoration: InputDecoration(errorText: _portError),
               enabled: !_fetching,
               keyboardType: TextInputType.number,
             ),
@@ -151,9 +156,12 @@ class _FavoriteEditDialogState extends State<FavoriteEditDialog> with Refena {
                     return;
                   }
 
-                  if (_portController.text.isEmpty) {
+                  final port = int.tryParse(_portController.text);
+                  if (port == null || port < 1 || port > 65535) {
+                    setState(() => _portError = t.dialogs.favoriteEditDialog.invalidPort);
                     return;
                   }
+                  setState(() => _portError = null);
 
                   if (widget.favorite != null) {
                     // Update existing favorite
@@ -169,30 +177,33 @@ class _FavoriteEditDialogState extends State<FavoriteEditDialog> with Refena {
                           UpdateFavoriteAction(
                             existingFavorite.copyWith(
                               ip: _ipController.text,
-                              port: int.parse(_portController.text),
+                              port: port,
                               alias: trimmedNewAlias,
                               customAlias: existingFavorite.customAlias || trimmedNewAlias != existingFavorite.alias,
                             ),
                           ),
                         );
+                    if (context.mounted) {
+                      context.pop();
+                    }
                   } else {
                     // Add new favorite
                     final ip = _ipController.text;
-                    final port = int.parse(_portController.text);
                     final https = ref.read(settingsProvider).https;
                     setState(() {
                       _fetching = true;
                     });
 
                     try {
-                      final result = await ref
-                          .redux(parentIsolateProvider)
-                          .dispatchAsyncTakeResult(
-                            IsolateTargetHttpDiscoveryAction(
-                              ip: ip,
-                              port: port,
-                              https: https,
-                            ),
+                      final payload = ref.read(deviceFullInfoProvider).toRegisterDto();
+                      final response = await ref
+                          .read(httpProvider)
+                          .discovery
+                          .register(
+                            protocol: https ? ProtocolType.https : ProtocolType.http,
+                            ip: ip,
+                            port: port,
+                            payload: payload,
                           );
 
                       final name = _aliasController.text.trim();
@@ -202,10 +213,10 @@ class _FavoriteEditDialogState extends State<FavoriteEditDialog> with Refena {
                           .dispatchAsync(
                             AddFavoriteAction(
                               FavoriteDevice.fromValues(
-                                fingerprint: result.fingerprint,
+                                fingerprint: response.body.token,
                                 ip: _ipController.text,
-                                port: int.parse(_portController.text),
-                                alias: name.isEmpty ? result.alias : name,
+                                port: port,
+                                alias: name.isEmpty ? response.body.alias : name,
                               ),
                             ),
                           );
